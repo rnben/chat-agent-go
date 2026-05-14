@@ -15,13 +15,14 @@ type Session struct {
 
 // Message 消息
 type Message struct {
-	ID        string     `json:"id"`
-	SessionID string     `json:"session_id"`
-	Role      string     `json:"role"` // user, assistant, system, tool
-	Content   string     `json:"content"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	ToolResult string    `json:"tool_result,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID         string     `json:"id"`
+	SessionID  string     `json:"session_id"`
+	Role       string     `json:"role"` // user, assistant, system, tool
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolResult string     `json:"tool_result,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"` // 工具调用ID，用于tool角色的消息
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // ToolCall 工具调用

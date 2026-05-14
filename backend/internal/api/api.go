@@ -20,10 +20,12 @@ type Handler struct {
 // NewHandler 创建处理器
 func NewHandler(a *agent.Agent) *Handler {
 	h := &Handler{
-		agent: a,
+		agent:  a,
 		router: mux.NewRouter(),
 	}
 	h.setupRoutes()
+	// 应用日志中间件到整个路由器
+	h.router.Use(logMiddleware)
 	return h
 }
 
@@ -61,6 +63,13 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "无效的请求体", http.StatusBadRequest)
 		return
 	}
+
+	// 记录请求日志，包括 prompt
+	clientIP := r.RemoteAddr
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		clientIP = forwarded
+	}
+	log.Printf("[请求] 客户端IP: %s, 会话ID: %s, 用户消息: %s", clientIP, req.SessionID, req.Message)
 
 	// 验证必填字段
 	if req.Message == "" {
@@ -176,4 +185,18 @@ func (h *Handler) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 func jsonResponse(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// logMiddleware 请求日志中间件
+func logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 记录请求开始
+		log.Printf("[请求开始] %s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
+		
+		// 调用下一个处理器
+		next.ServeHTTP(w, r)
+		
+		// 记录请求结束（可选，如果需要记录响应状态码，可以使用ResponseWriter包装）
+		// log.Printf("[请求结束] %s %s", r.Method, r.URL.Path)
+	})
 }

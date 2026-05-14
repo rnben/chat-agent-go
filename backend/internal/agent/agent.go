@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"chat-agent/internal/llm"
 	"chat-agent/internal/store"
@@ -69,9 +70,38 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, userMessage string, 
 
 	// 构建消息历史
 	messages := a.buildMessages(sessionID)
+	
+	// 记录系统提示词
+	if len(messages) > 0 && messages[0].Role == openai.ChatMessageRoleSystem {
+		log.Printf("[系统提示词] %s", messages[0].Content)
+	}
+	
+	// 记录发送给LLM的prompt
+	log.Printf("[LLM请求] 会话ID: %s, 消息数: %d, 最后一条消息: %s", 
+		sessionID, len(messages), 
+		func() string {
+			if len(messages) > 0 {
+				lastMsg := messages[len(messages)-1]
+				if len(lastMsg.Content) > 100 {
+					return lastMsg.Content[:100] + "..."
+				}
+				return lastMsg.Content
+			}
+			return ""
+		}())
 
 	// 获取工具定义
 	tools := a.llm.GetTools()
+	
+	// 记录工具定义详情
+	if len(tools) > 0 {
+		log.Printf("[工具定义] 数量: %d", len(tools))
+		for i, tool := range tools {
+			if tool.Function != nil {
+				log.Printf("  工具 %d: %s - %s", i+1, tool.Function.Name, tool.Function.Description)
+			}
+		}
+	}
 
 	// 流式调用 LLM
 	var collectedToolCalls []openai.ToolCall
@@ -168,6 +198,7 @@ func (a *Agent) handleToolCalls(ctx context.Context, sessionID string, toolCalls
 			Role:       "tool",
 			Content:    result,
 			ToolResult: result,
+			ToolCallID: tc.ID, // 关联工具调用ID
 		})
 	}
 
@@ -232,6 +263,28 @@ func (a *Agent) buildMessages(sessionID string) []openai.ChatCompletionMessage {
 			Role:    msg.Role,
 			Content: msg.Content,
 		}
+		
+		// 如果是tool消息，需要设置ToolCallID
+		if msg.Role == "tool" && msg.ToolCallID != "" {
+			chatMsg.ToolCallID = msg.ToolCallID
+		}
+		
+		// 如果有助手的工具调用，需要设置ToolCalls
+		if len(msg.ToolCalls) > 0 {
+			var toolCalls []openai.ToolCall
+			for _, tc := range msg.ToolCalls {
+				toolCalls = append(toolCalls, openai.ToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: openai.FunctionCall{
+						Name:      tc.Name,
+						Arguments: tc.ArgsJSON,
+					},
+				})
+			}
+			chatMsg.ToolCalls = toolCalls
+		}
+		
 		chatMessages = append(chatMessages, chatMsg)
 	}
 
