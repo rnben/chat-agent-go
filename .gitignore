@@ -38,3 +38,7 @@ node_modules/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# Vite temporary files
+*.timestamp-*.mjs
+*.timestamp*
