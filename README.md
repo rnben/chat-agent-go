@@ -163,6 +163,40 @@ chat-agent/
 
 修改 `backend/internal/store/store.go`，将内存存储替换为数据库实现。
 
+## 更新日志
+
+### 2026-05-15 - 增强日志记录和修复工具调用
+
+**新增功能：**
+- 添加详细的请求日志中间件，记录所有API请求（方法、路径、客户端IP）
+- 添加聊天请求日志，记录用户消息（prompt）、会话ID、客户端IP
+- 添加系统提示词日志，显示发送给LLM的系统指令
+- 添加工具定义日志，显示所有可用工具的名称和描述
+- 添加LLM原始响应日志（JSON格式），便于调试API响应
+- 添加LLM配置日志（API密钥、基础URL、模型名称）
+- 添加完整的请求体日志，记录发送给LLM的完整请求
+
+**Bug修复：**
+- 修复工具调用后LLM请求失败的问题（`invalid character 'd'` 错误）
+- 在Message结构体中添加`ToolCallID`字段，确保工具响应关联到正确的工具调用
+- 在`buildMessages`方法中正确处理`role: "tool"`消息的`ToolCallID`
+- 在`buildMessages`方法中支持`assistant`消息的`ToolCalls`字段
+- 优化错误日志，显示详细的错误类型、状态码和API错误信息
+
+**日志示例：**
+```
+[请求] 客户端IP: [::1]:50135, 会话ID: sess_1, 用户消息: 查询订单
+[系统提示词] 你是一个有用的问答助手，可以帮助用户回答各种问题。请用中文回答。
+[工具定义] 数量: 2
+  工具 1: query_order - 根据订单号查询订单状态和详细信息
+  工具 2: query_user_orders - 查询用户的所有订单列表
+[LLM请求] 模型: mimo-v2-omni, 消息数: 4, 工具数: 2
+[LLM请求体] {"model":"mimo-v2-omni","messages":[...],"tools":[...],"stream":true}
+[LLM工具调用] 数量: 1
+  工具 1: query_order, 参数: {"order_id": "ORD-20260515-001"}
+[LLM响应] 内容长度: 156, 内容: 好的，我来帮您查询订单...
+```
+
 ## License
 
 MIT
