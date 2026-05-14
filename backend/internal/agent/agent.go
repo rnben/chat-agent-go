@@ -217,7 +217,7 @@ func (a *Agent) buildMessages(sessionID string) []openai.ChatCompletionMessage {
 	chatMessages := []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleSystem,
-			Content: "你是一个有用的订单查询助手。你可以帮助用户查询订单状态和订单详情。请用中文回答。",
+			Content: "你是一个有用的问答助手，可以帮助用户回答各种问题。请用中文回答。",
 		},
 	}
 
