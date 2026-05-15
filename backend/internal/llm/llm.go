@@ -30,14 +30,14 @@ func NewClient() *Client {
 		}
 		log.Printf("[LLM配置] API密钥: %s", maskedKey)
 	}
-	
+
 	baseURL := os.Getenv("OPENAI_BASE_URL")
 	if baseURL != "" {
 		log.Printf("[LLM配置] 基础URL: %s", baseURL)
 	} else {
 		log.Printf("[LLM配置] 基础URL: https://api.openai.com (默认)")
 	}
-	
+
 	config := openai.DefaultConfig(apiKey)
 	if baseURL != "" {
 		config.BaseURL = baseURL
@@ -59,10 +59,10 @@ func NewClient() *Client {
 type StreamCallback func(content string, done bool, toolCalls []openai.ToolCall)
 
 // Chat 流式聊天
-func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool, callback StreamCallback) error {
+func (c *Client) Chat(ctx context.Context, sessionID string, messages []openai.ChatCompletionMessage, tools []openai.Tool, callback StreamCallback) error {
 	// 记录LLM请求详情
-	log.Printf("[LLM请求] 模型: %s, 消息数: %d, 工具数: %d", c.model, len(messages), len(tools))
-	
+	log.Printf("[LLM请求] 会话ID: %s, 模型: %s, 消息数: %d, 工具数: %d", sessionID, c.model, len(messages), len(tools))
+
 	// 构建请求体
 	req := openai.ChatCompletionRequest{
 		Model:    c.model,
@@ -70,17 +70,17 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 		Tools:    tools,
 		Stream:   true,
 	}
-	
+
 	// 记录完整的请求体
 	if reqJSON, err := json.Marshal(req); err == nil {
 		log.Printf("[LLM请求体] %s", string(reqJSON))
 	}
-	
+
 	stream, err := c.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
 		// 记录详细的错误信息
-		log.Printf("[LLM请求失败] 错误类型: %T, 错误详情: %v", err, err)
-		
+		log.Printf("[LLM请求失败] llm.go:82 - stream:%v 错误类型: %T, 错误详情: %v", stream, err, err)
+
 		// 如果是 API 错误，尝试获取更多信息
 		if apiErr, ok := err.(*openai.APIError); ok {
 			log.Printf("[LLM API错误] 状态码: %d, 消息: %s", apiErr.HTTPStatusCode, apiErr.Message)
@@ -89,20 +89,20 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 				log.Printf("[LLM API错误] 错误代码: %s", apiErr.Code)
 			}
 		}
-		
+
 		return fmt.Errorf("LLM 请求失败: %w", err)
 	}
 	defer stream.Close()
 
 	var toolCalls []openai.ToolCall
 	var fullResponse string
-	
+
 	for {
 		response, err := stream.Recv()
 		if err != nil {
 			// 记录详细的错误信息
-			log.Printf("[LLM接收错误] 错误类型: %T, 错误详情: %v", err, err)
-			
+			log.Printf("[LLM接收错误] llm.go:104 - 错误类型: %T, 错误详情: %v", err, err)
+
 			if err.Error() == "EOF" {
 				break
 			}
@@ -117,13 +117,13 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 		// 检查是否有内容
 		if len(response.Choices) > 0 {
 			delta := response.Choices[0].Delta
-			
+
 			// 处理内容
 			if delta.Content != "" {
 				fullResponse += delta.Content
 				callback(delta.Content, false, nil)
 			}
-			
+
 			// 处理工具调用
 			if len(delta.ToolCalls) > 0 {
 				for _, tc := range delta.ToolCalls {
