@@ -33,10 +33,9 @@ func NewHandler(a *agent.Agent) *Handler {
 func (h *Handler) setupRoutes() {
 	// API 路由
 	api := h.router.PathPrefix("/api").Subrouter()
-	
+
 	api.HandleFunc("/chat", h.handleChat).Methods("POST")
 	api.HandleFunc("/sessions", h.handleListSessions).Methods("GET")
-	api.HandleFunc("/sessions", h.handleCreateSession).Methods("POST")
 	api.HandleFunc("/sessions/{id}", h.handleGetSession).Methods("GET")
 	api.HandleFunc("/sessions/{id}/history", h.handleGetHistory).Methods("GET")
 	api.HandleFunc("/sessions/{id}", h.handleDeleteSession).Methods("DELETE")
@@ -128,25 +127,6 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := h.agent.ListSessions()
 	jsonResponse(w, sessions)
-}
-
-// CreateSessionRequest 创建会话请求
-type CreateSessionRequest struct {
-	Title string `json:"title"`
-}
-
-// handleCreateSession 创建会话
-func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
-	var req CreateSessionRequest
-	json.NewDecoder(r.Body).Decode(&req)
-
-	session := h.agent.CreateSession()
-	if req.Title != "" {
-		// 可以更新标题
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	jsonResponse(w, session)
 }
 
 // handleGetSession 获取会话详情

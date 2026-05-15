@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+// Store 存储接口
+type Store interface {
+	CreateSession(id, title string) *Session
+	GetSession(id string) (*Session, bool)
+	ListSessions() []*Session
+	DeleteSession(id string)
+	AddMessage(msg *Message)
+	GetMessages(sessionID string) []*Message
+	UpdateSessionTitle(id, title string)
+}
+
 // Session 会话
 type Session struct {
 	ID        string    `json:"id"`

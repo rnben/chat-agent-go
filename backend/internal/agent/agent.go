@@ -15,15 +15,15 @@ import (
 // Agent 对话代理
 type Agent struct {
 	llm        *llm.Client
-	store      *store.MemoryStore
+	store      store.Store
 	orderStore *tools.MockOrderStore
 }
 
 // NewAgent 创建代理
-func NewAgent(llmClient *llm.Client, store *store.MemoryStore) *Agent {
+func NewAgent(llmClient *llm.Client, s store.Store) *Agent {
 	return &Agent{
 		llm:        llmClient,
-		store:      store,
+		store:      s,
 		orderStore: tools.NewMockOrderStore(),
 	}
 }
