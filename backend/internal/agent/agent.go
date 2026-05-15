@@ -3,9 +3,9 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"chat-agent/internal/llm"
+	"chat-agent/internal/logger"
 	"chat-agent/internal/store"
 	"chat-agent/internal/tools"
 
@@ -32,11 +32,11 @@ func NewAgent(llmClient *llm.Client, s store.Store) *Agent {
 type StreamEventType string
 
 const (
-	EventContent  StreamEventType = "content"
-	EventToolCall StreamEventType = "tool_call"
+	EventContent    StreamEventType = "content"
+	EventToolCall  StreamEventType = "tool_call"
 	EventToolResult StreamEventType = "tool_result"
-	EventDone     StreamEventType = "done"
-	EventError    StreamEventType = "error"
+	EventDone       StreamEventType = "done"
+	EventError      StreamEventType = "error"
 )
 
 // StreamEvent 流式事件
@@ -70,25 +70,36 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, userMessage string, 
 
 	// 构建消息历史
 	messages := a.buildMessages(sessionID)
-	
+
 	// 记录系统提示词
 	if len(messages) > 0 && messages[0].Role == openai.ChatMessageRoleSystem {
-		log.Printf("[系统提示词] %s", messages[0].Content)
+		logger.Debug("系统提示词",
+			logger.WithField("session_id", sessionID),
+			logger.WithField("content", messages[0].Content),
+		)
 	}
-	
+
 	// 记录发送给LLM的prompt
-	log.Printf("[LLM请求] 会话ID: %s, 消息数: %d", sessionID, len(messages))
+	logger.Info("LLM请求",
+		logger.WithField("session_id", sessionID),
+		logger.WithField("messages", len(messages)),
+	)
 
 	// 获取工具定义
 	tools := a.llm.GetTools()
-	
-	// 记录工具定义详情
-	if len(tools) > 0 {
-		log.Printf("[工具定义] 数量: %d", len(tools))
-		for i, tool := range tools {
-			if tool.Function != nil {
-				log.Printf("  工具 %d: %s - %s", i+1, tool.Function.Name, tool.Function.Description)
-			}
+
+	logger.Info("工具定义",
+		logger.WithField("session_id", sessionID),
+		logger.WithField("count", len(tools)),
+	)
+	for i, tool := range tools {
+		if tool.Function != nil {
+			logger.Debug("工具详情",
+				logger.WithField("session_id", sessionID),
+				logger.WithField("index", i+1),
+				logger.WithField("name", tool.Function.Name),
+				logger.WithField("description", tool.Function.Description),
+			)
 		}
 	}
 
@@ -159,6 +170,10 @@ func (a *Agent) handleToolCalls(ctx context.Context, sessionID string, toolCalls
 			Content:   "",
 			ToolCalls: tcList,
 		})
+		logger.Info("保存助手消息(含ToolCalls)",
+			logger.WithField("session_id", sessionID),
+			logger.WithField("count", len(toolCalls)),
+		)
 	}
 
 	for _, tc := range toolCalls {
@@ -171,6 +186,13 @@ func (a *Agent) handleToolCalls(ctx context.Context, sessionID string, toolCalls
 				Args: tc.Function.Arguments,
 			},
 		})
+
+		logger.Info("工具调用",
+			logger.WithField("session_id", sessionID),
+			logger.WithField("tool_id", tc.ID),
+			logger.WithField("tool_name", tc.Function.Name),
+			logger.WithField("arguments", tc.Function.Arguments),
+		)
 
 		// 执行工具
 		var result string
@@ -199,6 +221,11 @@ func (a *Agent) handleToolCalls(ctx context.Context, sessionID string, toolCalls
 			},
 		})
 
+		logger.Info("工具结果",
+			logger.WithField("session_id", sessionID),
+			logger.WithField("tool_id", tc.ID),
+		)
+
 		// 将工具结果添加到消息历史
 		a.store.AddMessage(&store.Message{
 			ID:         fmt.Sprintf("msg_%d", len(a.store.GetMessages(sessionID))+1),
@@ -206,7 +233,7 @@ func (a *Agent) handleToolCalls(ctx context.Context, sessionID string, toolCalls
 			Role:       "tool",
 			Content:    result,
 			ToolResult: result,
-			ToolCallID: tc.ID, // 关联工具调用ID
+			ToolCallID: tc.ID,
 			ToolCalls: []store.ToolCall{
 				{
 					ID:       tc.ID,
@@ -224,6 +251,11 @@ func (a *Agent) handleToolCalls(ctx context.Context, sessionID string, toolCalls
 // generateFinalResponse 生成最终回复（工具调用后）
 func (a *Agent) generateFinalResponse(ctx context.Context, sessionID string, callback StreamCallback) {
 	messages := a.buildMessages(sessionID)
+
+	logger.Info("LLM最终回复请求",
+		logger.WithField("session_id", sessionID),
+		logger.WithField("messages", len(messages)),
+	)
 
 	var fullContent string
 	err := a.llm.Chat(ctx, sessionID, messages, nil, func(content string, done bool, toolCalls []openai.ToolCall) {
@@ -259,7 +291,10 @@ func (a *Agent) generateFinalResponse(ctx context.Context, sessionID string, cal
 func (a *Agent) buildMessages(sessionID string) []openai.ChatCompletionMessage {
 	messages := a.store.GetMessages(sessionID)
 
-	log.Printf("[buildMessages] 消息数: %d", len(messages))
+	logger.Debug("buildMessages",
+		logger.WithField("session_id", sessionID),
+		logger.WithField("消息数", len(messages)),
+	)
 
 	// 系统提示
 	chatMessages := []openai.ChatCompletionMessage{
@@ -280,31 +315,40 @@ func (a *Agent) buildMessages(sessionID string) []openai.ChatCompletionMessage {
 
 	for i, msg := range messages[startIdx:] {
 		// 处理 tool 消息 - 需要携带对应的 ToolCallID
-		if msg.Role == "tool" {
-			log.Printf("[buildMessages] tool消息 #%d: ToolCallID=%s, Content长度=%d", i, msg.ToolCallID, len(msg.Content))
+		if msg.Role == "tool" && msg.ToolCallID != "" {
+			logger.Debug("buildMessages tool消息",
+				logger.WithField("session_id", sessionID),
+				logger.WithField("index", i),
+				logger.WithField("tool_call_id", msg.ToolCallID),
+			)
 		}
 
 		if msg.Role == "tool" && msg.ToolCallID != "" {
 			// 查找对应的 tool call
 			var matchedToolCall *openai.ToolCall
 			for _, tc := range pendingToolCalls {
-				log.Printf("[buildMessages] pendingToolCall ID: %s", tc.ID)
 				if tc.ID == msg.ToolCallID {
 					matchedToolCall = &tc
 					break
 				}
 			}
 			if matchedToolCall != nil {
-				log.Printf("[buildMessages] 匹配成功: tool=%s", matchedToolCall.Function.Name)
+				logger.Debug("buildMessages 匹配成功",
+					logger.WithField("session_id", sessionID),
+					logger.WithField("tool", matchedToolCall.Function.Name),
+				)
 				chatMsg := openai.ChatCompletionMessage{
 					Role:      msg.Role,
 					Content:   msg.Content,
 					ToolCallID: msg.ToolCallID,
-					ToolCalls: []openai.ToolCall{*matchedToolCall},
+					ToolCalls:  []openai.ToolCall{*matchedToolCall},
 				}
 				chatMessages = append(chatMessages, chatMsg)
 			} else {
-				log.Printf("[buildMessages] 未找到匹配tool，ID=%s", msg.ToolCallID)
+				logger.Warn("buildMessages 未找到匹配tool",
+					logger.WithField("session_id", sessionID),
+					logger.WithField("tool_call_id", msg.ToolCallID),
+				)
 				// 如果找不到匹配的 tool call，只传 content
 				chatMsg := openai.ChatCompletionMessage{
 					Role:    msg.Role,
@@ -323,9 +367,16 @@ func (a *Agent) buildMessages(sessionID string) []openai.ChatCompletionMessage {
 
 		// 如果有助手的工具调用，需要设置 ToolCalls
 		if len(msg.ToolCalls) > 0 {
-			log.Printf("[buildMessages] 助手消息 #%d 有ToolCalls: %d", i, len(msg.ToolCalls))
+			logger.Debug("buildMessages 助手消息有ToolCalls",
+				logger.WithField("session_id", sessionID),
+				logger.WithField("count", len(msg.ToolCalls)),
+			)
 			for _, tc := range msg.ToolCalls {
-				log.Printf("[buildMessages]   tool: ID=%s, Name=%s", tc.ID, tc.Name)
+				logger.Debug("buildMessages tool",
+					logger.WithField("session_id", sessionID),
+					logger.WithField("id", tc.ID),
+					logger.WithField("name", tc.Name),
+				)
 				toolCall := openai.ToolCall{
 					ID:   tc.ID,
 					Type: "function",
@@ -342,13 +393,20 @@ func (a *Agent) buildMessages(sessionID string) []openai.ChatCompletionMessage {
 		chatMessages = append(chatMessages, chatMsg)
 	}
 
-	log.Printf("[buildMessages] 最终消息数: %d", len(chatMessages))
+	logger.Debug("buildMessages 最终",
+		logger.WithField("session_id", sessionID),
+		logger.WithField("消息数", len(chatMessages)),
+	)
+
 	return chatMessages
 }
 
 // CreateSession 创建新会话
 func (a *Agent) CreateSession() *store.Session {
 	sessionID := fmt.Sprintf("sess_%d", len(a.store.ListSessions())+1)
+	logger.Info("创建会话",
+		logger.WithField("session_id", sessionID),
+	)
 	return a.store.CreateSession(sessionID, "新会话")
 }
 
@@ -369,5 +427,8 @@ func (a *Agent) GetSessionHistory(sessionID string) []*store.Message {
 
 // DeleteSession 删除会话
 func (a *Agent) DeleteSession(id string) {
+	logger.Info("删除会话",
+		logger.WithField("session_id", id),
+	)
 	a.store.DeleteSession(id)
 }

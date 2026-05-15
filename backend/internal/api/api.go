@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+	"time"
 
 	"chat-agent/internal/agent"
+	"chat-agent/internal/logger"
 
 	"github.com/gorilla/mux"
 )
@@ -26,11 +28,16 @@ func NewHandler(a *agent.Agent) *Handler {
 	h.setupRoutes()
 	// 应用日志中间件到整个路由器
 	h.router.Use(logMiddleware)
+	// 应用超时中间件
+	h.router.Use(timeoutMiddleware(60 * time.Second))
 	return h
 }
 
 // setupRoutes 设置路由
 func (h *Handler) setupRoutes() {
+	// 健康检查
+	h.router.HandleFunc("/health", h.handleHealth).Methods("GET")
+
 	// API 路由
 	api := h.router.PathPrefix("/api").Subrouter()
 
@@ -68,7 +75,11 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 		clientIP = forwarded
 	}
-	log.Printf("[请求] 客户端IP: %s, 会话ID: %s, 用户消息: %s", clientIP, req.SessionID, req.Message)
+	logger.Info("聊天请求",
+		logger.WithField("client_ip", clientIP),
+		logger.WithField("session_id", req.SessionID),
+		logger.WithField("message", req.Message),
+	)
 
 	// 验证必填字段
 	if req.Message == "" {
@@ -111,7 +122,9 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	err := h.agent.Chat(ctx, req.SessionID, req.Message, func(event agent.StreamEvent) {
 		data, err := json.Marshal(event)
 		if err != nil {
-			log.Printf("序列化事件失败: %v", err)
+			logger.Error("序列化事件失败",
+		logger.WithField("error", err.Error()),
+	)
 			return
 		}
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
@@ -119,7 +132,10 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		log.Printf("聊天处理失败: %v", err)
+		logger.Error("聊天处理失败",
+		logger.WithField("session_id", req.SessionID),
+		logger.WithField("error", err.Error()),
+	)
 	}
 }
 
@@ -127,6 +143,12 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := h.agent.ListSessions()
 	jsonResponse(w, sessions)
+}
+
+// handleHealth 健康检查
+func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleGetSession 获取会话详情
@@ -170,13 +192,40 @@ func jsonResponse(w http.ResponseWriter, data interface{}) {
 // logMiddleware 请求日志中间件
 func logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 记录请求开始
-		log.Printf("[请求开始] %s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
-		
-		// 调用下一个处理器
+		logger.Info("请求开始",
+			logger.WithField("method", r.Method),
+			logger.WithField("path", r.URL.Path),
+			logger.WithField("remote_addr", r.RemoteAddr),
+		)
+
 		next.ServeHTTP(w, r)
-		
-		// 记录请求结束（可选，如果需要记录响应状态码，可以使用ResponseWriter包装）
-		// log.Printf("[请求结束] %s %s", r.Method, r.URL.Path)
 	})
+}
+
+// timeoutMiddleware 请求超时中间件
+func timeoutMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+
+			done := make(chan struct{})
+			go func() {
+				next.ServeHTTP(w, r)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				logger.Warn("请求超时",
+					logger.WithField("method", r.Method),
+					logger.WithField("path", r.URL.Path),
+					logger.WithField("timeout", timeout),
+				)
+				http.Error(w, "请求超时", http.StatusRequestTimeout)
+			}
+		})
+	}
 }
