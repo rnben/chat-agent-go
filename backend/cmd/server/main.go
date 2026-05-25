@@ -13,6 +13,7 @@ import (
 	"chat-agent/internal/api"
 	"chat-agent/internal/llm"
 	"chat-agent/internal/logger"
+	"chat-agent/internal/mcp"
 	"chat-agent/internal/store"
 )
 
@@ -55,6 +56,15 @@ func main() {
 	llmClient := llm.NewClient()
 	agentImpl := agent.NewAgent(llmClient, storeImpl)
 	handler := api.NewHandler(agentImpl)
+
+	// 初始化 MCP 服务器 (Streamable HTTP)
+	mcpServer := mcp.NewServer(":8081")
+	handler.GetRouter().PathPrefix("/mcp").Handler(mcpServer.GetHandler())
+
+	logger.Info("MCP服务器已挂载到 /mcp 路径")
+
+	// 静态文件路由最后注册，避免覆盖 /mcp 等路径
+	handler.SetupStaticRoutes()
 
 	// 创建服务器
 	server := &http.Server{

@@ -9,14 +9,14 @@ import (
 
 // Order 订单
 type Order struct {
-	OrderID     string        `json:"order_id"`
-	UserID      string        `json:"user_id"`
-	Status      string        `json:"status"`
-	Items       []OrderItem   `json:"items"`
-	TotalAmount float64       `json:"total_amount"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
-	Timeline    []OrderEvent  `json:"timeline"`
+	OrderID     string       `json:"order_id"`
+	UserID      string       `json:"user_id"`
+	Status      string       `json:"status"`
+	Items       []OrderItem  `json:"items"`
+	TotalAmount float64      `json:"total_amount"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	Timeline    []OrderEvent `json:"timeline"`
 }
 
 // OrderItem 订单项
@@ -184,9 +184,9 @@ func HandleQueryOrder(store *MockOrderStore, argsJSON string) (string, error) {
 	result += "\n\n订单时间线:"
 
 	for _, event := range order.Timeline {
-		result += fmt.Sprintf("\n- [%s] %s: %s", 
-			event.Timestamp.Format("01-02 15:04"), 
-			statusText[event.Status], 
+		result += fmt.Sprintf("\n- [%s] %s: %s",
+			event.Timestamp.Format("01-02 15:04"),
+			statusText[event.Status],
 			event.Note)
 	}
 

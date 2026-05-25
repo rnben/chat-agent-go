@@ -46,8 +46,9 @@ func (h *Handler) setupRoutes() {
 	api.HandleFunc("/sessions/{id}", h.handleGetSession).Methods("GET")
 	api.HandleFunc("/sessions/{id}/history", h.handleGetHistory).Methods("GET")
 	api.HandleFunc("/sessions/{id}", h.handleDeleteSession).Methods("DELETE")
+}
 
-	// 前端静态文件
+func (h *Handler) SetupStaticRoutes() {
 	h.router.PathPrefix("/").Handler(http.FileServer(http.Dir("./frontend/dist")))
 }
 
