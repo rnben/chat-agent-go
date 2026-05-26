@@ -1,19 +1,7 @@
 <template>
   <div class="app">
-    <!-- 悬浮球 -->
-    <div
-      v-if="!isOpen"
-      class="floating-ball"
-      @click="openChat"
-      title="问答助手"
-    >
-      <div class="ball-glow"></div>
-      <span class="ball-icon">🤖</span>
-      <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
-    </div>
-
-    <!-- 聊天窗口 -->
-    <div v-if="isOpen" class="chat-window" :class="{ 'fullscreen-mode': isFullscreen }">
+    <!-- 聊天窗口 - 直接居中显示 -->
+    <div class="chat-window centered" :class="{ 'fullscreen-mode': isFullscreen }">
       <div class="window-glow"></div>
 
       <!-- 历史会话抽屉 -->
@@ -216,11 +204,25 @@
 
     <!-- 全屏模式背景 -->
     <div v-if="isFullscreen" class="fullscreen-backdrop"></div>
+    
+    <!-- 历史抽屉遮罩层 -->
+    <transition name="fade">
+      <div v-if="showHistory" class="drawer-overlay" @click="showHistory = false"></div>
+    </transition>
   </div>
 </template>
 
 <script>
 import { ref, computed, nextTick } from 'vue'
+import MarkdownIt from 'markdown-it'
+
+// 配置 markdown-it
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true
+})
 
 export default {
   name: 'App',
@@ -448,16 +450,10 @@ export default {
       }
     }
 
-    // 格式化内容
+    // 格式化内容 - 使用 markdown-it 库渲染 Markdown
     const formatContent = (content) => {
       if (!content) return ''
-      return content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      return md.render(content)
     }
 
     // 格式化时间
@@ -538,7 +534,7 @@ export default {
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap');
+/* Fonts loaded via index.html with preconnect for better performance */
 
 :root {
   --bg-primary: #0a0a12;
@@ -674,11 +670,8 @@ body::before {
 
 /* ===== 聊天窗口 ===== */
 .chat-window {
-  position: fixed;
-  bottom: 28px;
-  right: 28px;
-  width: 440px;
-  height: 640px;
+  width: 720px;
+  height: 800px;
   background: var(--bg-glass);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -694,6 +687,14 @@ body::before {
   border: 1px solid var(--border-glass);
 }
 
+/* 居中模式 */
+.chat-window.centered {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .window-glow {
   position: absolute;
   top: 0;
@@ -707,11 +708,11 @@ body::before {
 @keyframes windowAppear {
   from {
     opacity: 0;
-    transform: translateY(24px) scale(0.96);
+    transform: translate(-50%, -45%) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate(-50%, -50%) scale(1);
   }
 }
 
@@ -890,6 +891,25 @@ body::before {
   transform: translateX(100%);
 }
 
+/* ===== 遮罩层 ===== */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 15;
+  backdrop-filter: blur(2px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 /* ===== 主聊天区 ===== */
 .chat-main {
   flex: 1;
@@ -1053,7 +1073,7 @@ body::before {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 80%;
+  flex: 1;
 }
 
 .welcome-glow {
@@ -1169,8 +1189,12 @@ body::before {
 }
 
 .message-content {
-  max-width: 72%;
+  max-width: 80%;
   margin: 0 12px;
+}
+
+.chat-window.fullscreen-mode .message-content {
+  max-width: 65%;
 }
 
 .message-text {
@@ -1190,6 +1214,25 @@ body::before {
   color: white;
 }
 
+/* Markdown 样式 */
+.message-text h1,
+.message-text h2,
+.message-text h3,
+.message-text h4,
+.message-text h5,
+.message-text h6 {
+  color: var(--text-primary);
+  margin: 1em 0 0.5em;
+}
+
+.message-text h1 { font-size: 1.5em; }
+.message-text h2 { font-size: 1.3em; }
+.message-text h3 { font-size: 1.1em; }
+
+.message-text p {
+  margin: 0.5em 0;
+}
+
 .message-text code {
   background: rgba(124, 92, 252, 0.2);
   padding: 2px 8px;
@@ -1202,6 +1245,78 @@ body::before {
 .message.assistant .message-text code {
   background: rgba(92, 225, 230, 0.1);
   color: var(--accent-secondary);
+}
+
+.message-text pre {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.message-text pre code {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.message-text table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.message-text th,
+.message-text td {
+  padding: 10px 14px;
+  border: 1px solid var(--border-glass);
+  text-align: left;
+}
+
+.message-text th {
+  background: rgba(124, 92, 252, 0.1);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.message-text td {
+  color: var(--text-secondary);
+}
+
+.message-text ul,
+.message-text ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.message-text li {
+  margin: 0.25em 0;
+}
+
+.message-text blockquote {
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 12px;
+  margin: 12px 0;
+  color: var(--text-secondary);
+}
+
+.message-text hr {
+  border: none;
+  border-top: 1px solid var(--border-glass);
+  margin: 16px 0;
+}
+
+.message-text a {
+  color: var(--accent-secondary);
+  text-decoration: none;
+}
+
+.message-text a:hover {
+  text-decoration: underline;
 }
 
 .tool-call {
@@ -1299,7 +1414,7 @@ body::before {
 
 .textarea-wrap textarea {
   flex: 1;
-  padding: 14px 18px;
+  padding: 12px 18px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
@@ -1308,12 +1423,14 @@ body::before {
   font-family: inherit;
   outline: none;
   color: var(--text-primary);
-  min-height: 52px;
+  min-height: 48px;
   max-height: 240px;
   line-height: 1.5;
   overflow-y: auto;
   transition: all 0.2s;
   width: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .input-wrapper textarea::placeholder {
@@ -1393,18 +1510,18 @@ body::before {
 
 .chat-window.fullscreen-mode {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw !important;
-  height: 100vh !important;
-  border-radius: 0 !important;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90vw !important;
+  max-width: 1200px;
+  height: 85vh !important;
+  border-radius: var(--radius-xl) !important;
   z-index: 1000;
 }
 
 .chat-window.fullscreen-mode .messages {
-  max-height: calc(100vh - 160px);
+  max-height: calc(85vh - 160px);
 }
 
 /* ===== 加载动画 ===== */
