@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "markdown-it": "^14.2.0",
-    "marked": "^18.0.4",
     "vue": "^3.4.0"
   },
   "devDependencies": {
